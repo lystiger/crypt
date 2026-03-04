@@ -11,6 +11,8 @@ These files are split by topic and include input/output prompts and comments.
 - `elgamal_signature.py`: ElGamal sign + verify.
 - `elgamal_certificates.py`: Exam-style CA certificate generation/verification.
 - `dhke.py`: Diffie-Hellman key exchange.
+- `sha1_padding_explainer.py`: SHA-1 preprocessing/padding calculator.
+- `iterated_hash_from_block_cipher.py`: Simulate iterative hash formulas from the exam sheet.
 - `hkdf_sha256.py`: HKDF-SHA256 derivation.
 - `aes_cbc_demo.py`: AES-CBC encrypt/decrypt (requires `pycryptodome`).
 
