@@ -11,6 +11,12 @@ def square_and_multiply(x: int, e: int, n: int) -> int:
     if n <= 0:
         raise ValueError("Modulus n must be positive")
 
+    # For negative exponents, use modular inverse:
+    # x^(-e) mod n = (x^-1)^e mod n, if inverse exists.
+    if e < 0:
+        x = pow(x, -1, n)  # Raises ValueError when inverse does not exist.
+        e = -e
+
     result = 1
     x %= n
 
