@@ -5,10 +5,14 @@ What it does:
 - Applies SHA-1 padding (1 bit, zeros, 64-bit length)
 - Splits padded message into 512-bit blocks
 - Prints per-block structure and hex view
+- Draws the block structure with matplotlib and saves a PNG
 - Prints final SHA-1 digest for reference
 """
 
 import hashlib
+from textwrap import wrap
+
+import matplotlib.pyplot as plt
 
 
 def bytes_to_bitstring(data: bytes) -> str:
@@ -34,20 +38,89 @@ def split_blocks(data: bytes, block_size: int = 64) -> list[bytes]:
     return [data[i:i + block_size] for i in range(0, len(data), block_size)]
 
 
-def print_block_info(block: bytes, index: int):
-    words = [int.from_bytes(block[i:i + 4], "big") for i in range(0, 64, 4)]
+def split_words(block: bytes, word_bits: int) -> list[int]:
+    if word_bits % 8 != 0:
+        raise ValueError("word_bits must be a multiple of 8")
+    word_bytes = word_bits // 8
+    if len(block) % word_bytes != 0:
+        raise ValueError("Block size must be divisible by word size")
+    return [
+        int.from_bytes(block[i:i + word_bytes], "big")
+        for i in range(0, len(block), word_bytes)
+    ]
 
-    print(f"Block {index} (512 bits / 64 bytes)")
+
+def print_block_info(block: bytes, index: int, word_bits: int):
+    words = split_words(block, word_bits)
+    word_hex_len = word_bits // 4
+
+    print(f"Block {index} ({len(block) * 8} bits / {len(block)} bytes)")
     print("Hex:", block.hex())
-    print("Words W0..W15 (32-bit, hex):")
-    print(" ".join(f"{w:08x}" for w in words))
+    print(f"Words W0..W{len(words)-1} ({word_bits}-bit, hex):")
+    print(" ".join(f"{w:0{word_hex_len}x}" for w in words))
 
 
-def explain_structure(message: bytes):
+def visualize_blocks(blocks: list[bytes], output_path: str, word_bits: int):
+    rows = len(blocks)
+    fig, axes = plt.subplots(rows, 1, figsize=(14, 4 * rows))
+    if rows == 1:
+        axes = [axes]
+
+    for i, block in enumerate(blocks):
+        ax = axes[i]
+        words = split_words(block, word_bits)
+        word_hex_len = word_bits // 4
+        cols = min(4, len(words))
+        rows_grid = (len(words) + cols - 1) // cols
+        cell_text = []
+        idx = 0
+        for _ in range(rows_grid):
+            row = []
+            for _ in range(cols):
+                if idx < len(words):
+                    row.append(f"W{idx}\n{words[idx]:0{word_hex_len}x}")
+                else:
+                    row.append("")
+                idx += 1
+            cell_text.append(row)
+
+        ax.axis("off")
+        ax.set_title(f"Block {i} ({len(block) * 8} bits, {word_bits}-bit words)", fontsize=12, pad=12)
+
+        table = ax.table(cellText=cell_text, loc="center", cellLoc="center")
+        table.auto_set_font_size(False)
+        table.set_fontsize(10)
+        table.scale(1.1, 2.2)
+
+        # Show full block hex in wrapped lines below each table.
+        wrapped_hex = "\n".join(wrap(block.hex(), 64))
+        ax.text(
+            0.5,
+            -0.24,
+            f"Block {i} hex:\n{wrapped_hex}",
+            transform=ax.transAxes,
+            ha="center",
+            va="top",
+            fontsize=9,
+            family="monospace",
+        )
+
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
+
+
+def explain_structure(message: bytes, image_path: str, block_bits: int, word_bits: int):
     original_bits = len(message) * 8
     padded = sha1_pad(message)
     padded_bits = len(padded) * 8
-    blocks = split_blocks(padded)
+    if block_bits % 8 != 0:
+        raise ValueError("block_bits must be a multiple of 8")
+    if word_bits % 8 != 0:
+        raise ValueError("word_bits must be a multiple of 8")
+    if block_bits % word_bits != 0:
+        raise ValueError("block_bits must be divisible by word_bits")
+    blocks = split_blocks(padded, block_bits // 8)
 
     # k is the number of zero bits between the appended 1-bit and 64-bit length field.
     # Since we build with bytes, this still corresponds to SHA-1 definition.
@@ -58,17 +131,24 @@ def explain_structure(message: bytes):
     print("Format: M || 1 || 0^k || [L]_64")
     print(f"k = {k} zero bits")
     print(f"Padded length: {padded_bits} bits")
-    print(f"Number of 512-bit blocks: {len(blocks)}")
+    print(f"Number of {block_bits}-bit blocks: {len(blocks)}")
     print()
 
     for i, block in enumerate(blocks):
-        print_block_info(block, i)
+        print_block_info(block, i, word_bits)
         print()
 
     digest = hashlib.sha1(message).hexdigest()
     print("SHA-1 digest:", digest)
+    visualize_blocks(blocks, image_path, word_bits)
+    print(f"Saved block structure image: {image_path}")
 
 
 if __name__ == "__main__":
     msg = input("Enter message text: ").encode("utf-8")
-    explain_structure(msg)
+    output = input("Output image path [hash_blocks.png]: ").strip() or "hash_blocks.png"
+    block_bits_raw = input("Block size in bits [512]: ").strip()
+    word_bits_raw = input("Word size in bits [32] (use 64 if needed): ").strip()
+    block_bits = int(block_bits_raw) if block_bits_raw else 512
+    word_bits = int(word_bits_raw) if word_bits_raw else 32
+    explain_structure(msg, output, block_bits, word_bits)
