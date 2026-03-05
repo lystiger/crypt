@@ -12,8 +12,6 @@ What it does:
 import hashlib
 from textwrap import wrap
 
-import matplotlib.pyplot as plt
-
 
 def bytes_to_bitstring(data: bytes) -> str:
     return "".join(f"{b:08b}" for b in data)
@@ -61,6 +59,13 @@ def print_block_info(block: bytes, index: int, word_bits: int):
 
 
 def visualize_blocks(blocks: list[bytes], output_path: str, word_bits: int):
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError as exc:
+        raise SystemExit(
+            "matplotlib is required for visualization. Install with: pip install matplotlib"
+        ) from exc
+
     rows = len(blocks)
     fig, axes = plt.subplots(rows, 1, figsize=(14, 4 * rows))
     if rows == 1:
@@ -144,11 +149,40 @@ def explain_structure(message: bytes, image_path: str, block_bits: int, word_bit
     print(f"Saved block structure image: {image_path}")
 
 
+def explain_length_only(original_bits: int, block_bits: int, length_field_bits: int = 64):
+    if original_bits < 0:
+        raise ValueError("original_bits must be non-negative")
+    if block_bits <= 0:
+        raise ValueError("block_bits must be positive")
+    if length_field_bits <= 0:
+        raise ValueError("length_field_bits must be positive")
+
+    # SHA-style padding math using explicit bit length L.
+    target = block_bits - length_field_bits
+    k = (target - (original_bits + 1) % block_bits) % block_bits
+    total_bits = original_bits + 1 + k + length_field_bits
+    blocks = total_bits // block_bits
+
+    print("Padding (length-only mode)")
+    print(f"Original length L: {original_bits} bits")
+    print(f"Format: M || 1 || 0^k || [L]_{length_field_bits}")
+    print(f"k = {k} zero bits")
+    print(f"Total padded length = {total_bits} bits")
+    print(f"Number of {block_bits}-bit blocks = {blocks}")
+
+
 if __name__ == "__main__":
-    msg = input("Enter message text: ").encode("utf-8")
-    output = input("Output image path [hash_blocks.png]: ").strip() or "hash_blocks.png"
+    mode = input("Mode ('message' or 'length') [message]: ").strip().lower() or "message"
     block_bits_raw = input("Block size in bits [512]: ").strip()
     word_bits_raw = input("Word size in bits [32] (use 64 if needed): ").strip()
     block_bits = int(block_bits_raw) if block_bits_raw else 512
     word_bits = int(word_bits_raw) if word_bits_raw else 32
-    explain_structure(msg, output, block_bits, word_bits)
+    if mode == "length":
+        l_bits = int(input("Original message length L (bits): ").strip())
+        length_field_raw = input("Length-field size in bits [64]: ").strip()
+        length_field_bits = int(length_field_raw) if length_field_raw else 64
+        explain_length_only(l_bits, block_bits, length_field_bits)
+    else:
+        msg = input("Enter message text: ").encode("utf-8")
+        output = input("Output image path [hash_blocks.png]: ").strip() or "hash_blocks.png"
+        explain_structure(msg, output, block_bits, word_bits)
